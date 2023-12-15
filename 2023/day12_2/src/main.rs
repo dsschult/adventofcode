@@ -1,4 +1,5 @@
 use std::fs::read_to_string;
+use std::collections::HashMap;
 
 fn read_lines(filename: &str) -> Vec<String> {
     read_to_string(filename) 
@@ -7,14 +8,6 @@ fn read_lines(filename: &str) -> Vec<String> {
         .map(String::from)  // make each slice into a string
         .collect()  // gather them together into a vector
 }
-
-
-#[derive(Debug, Clone)]
-struct ConditionRow {
-    springs: Vec<char>,
-    damage_groups: Vec<u8>,
-}
-
 
 fn valid_row(springs_slice: &[char], damage_slice: &[u8]) -> (Option<bool>, usize, usize) {
     let mut dmg = damage_slice.iter();
@@ -70,12 +63,43 @@ fn valid_row(springs_slice: &[char], damage_slice: &[u8]) -> (Option<bool>, usiz
     (Some(e), 0, 0)
 }
 
+fn make_cache_key(s: &Vec<char>) -> Vec<u8> {
+    let mut ret = Vec::new();
+    let mut accumulate: u8 = 0;
+    for (i,x) in s.iter().enumerate() {
+        let b = match *x { '.' => 0, '#' => 1, '?' => 2, _ => panic!("bad char")};
+        let shift = i%4;
+        if shift == 0 && i > 0 {
+            ret.push(accumulate);
+            accumulate = b << shift;
+        } else {
+            accumulate += b << shift;
+        }
+    }
+    ret.push(accumulate);
+    ret
+}
+
+
+#[derive(Debug, Clone)]
+struct ConditionRow {
+    springs: Vec<char>,
+    springs_positions: Vec<usize>,
+    damage_groups: Vec<u8>,
+    cache: HashMap<Vec<u8>,u64>,
+}
+
 impl ConditionRow {
     fn new(line: &str) -> ConditionRow {
         //println!("line: {}", line);
         let parts = line.split_whitespace().collect::<Vec<_>>();
         let dmg = parts[1].split(',').map(|x| x.parse::<u8>().unwrap()).collect();
-        ConditionRow{springs: parts[0].chars().collect(), damage_groups: dmg}
+        ConditionRow{
+            springs: parts[0].chars().collect(),
+            springs_positions: Vec::new(),
+            damage_groups: dmg,
+            cache: HashMap::new(),
+        }
     }
 
     fn unfold(&mut self) -> () {
@@ -152,9 +176,19 @@ impl ConditionRow {
         Some(e)
     }
 
-    fn arrangement_cnt_helper(&self, cp: &mut Self, positions: &Vec<usize>, pos: usize, springs_pos: usize, damage_pos: usize) -> u64 {
+    fn arrangement_cnt_helper(&self, cp: &mut Self, pos: usize, springs_pos: usize, damage_pos: usize) -> u64 {
+        let do_cache = pos + 2 >= cp.springs_positions.len();
+        let mut cache_key = Vec::new();
+        if do_cache {
+            cache_key = make_cache_key(&cp.springs);
+            match cp.cache.get(&cache_key) {
+                Some(x) => { return *x },
+                None => { },
+            };
+        }
+
         let mut ret = 0;
-        let i = positions[pos];
+        let i = cp.springs_positions[pos];
         cp.springs[i] = '.';
         match valid_row(&cp.springs[springs_pos..], &cp.damage_groups[damage_pos..]) {
             (Some(true),_,_) => {
@@ -163,10 +197,11 @@ impl ConditionRow {
             }, // else, this is an invalid arrangement, so drop
             (None,sp,dp) => {
                 // this is ambiguous, continue
-                ret += self.arrangement_cnt_helper(cp, positions, pos+1, springs_pos+sp, damage_pos+dp);
+                ret += self.arrangement_cnt_helper(cp, pos+1, springs_pos+sp, damage_pos+dp);
             },
             _ => { }
         }
+
         cp.springs[i..].copy_from_slice(&self.springs[i..]);
         cp.springs[i] = '#';
         match valid_row(&cp.springs[springs_pos..], &cp.damage_groups[damage_pos..]) {
@@ -176,17 +211,21 @@ impl ConditionRow {
             }, // else, this is an invalid arrangement, so drop
             (None,sp,dp) => {
                 // this is ambiguous, continue
-                ret += self.arrangement_cnt_helper(cp, positions, pos+1, springs_pos+sp, damage_pos+dp);
+                ret += self.arrangement_cnt_helper(cp, pos+1, springs_pos+sp, damage_pos+dp);
             },
             _ => { }
+        }
+
+        if do_cache {
+            cp.cache.insert(cache_key, ret);
         }
         ret
     }
 
     fn arrangement_cnt(&self) -> u64 {
-        let positions = self.springs.iter().enumerate().filter(|(_,x)| **x == '?').map(|(a,_)| a).collect::<Vec<usize>>();
         let mut cp = self.clone();
-        self.arrangement_cnt_helper(&mut cp, &positions, 0, 0, 0)
+        cp.springs_positions = self.springs.iter().enumerate().filter(|(_,x)| **x == '?').map(|(a,_)| a).collect::<Vec<usize>>();
+        self.arrangement_cnt_helper(&mut cp, 0, 0, 0)
     }
 }
 
