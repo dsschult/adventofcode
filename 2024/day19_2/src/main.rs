@@ -55,58 +55,50 @@ impl Branding {
     }
 
     fn _possible_design(&self, design: &str) -> usize {
-        let mut ret = 0;
-        let mut queue = vec![(0, Vec::new())];
-        //let mut hist = HashSet::new();
-        //let mut towels = TrieBuilder::new();
-
-        while !queue.is_empty() {
-            let (design_index, patterns) = queue.pop().unwrap();
-            let design_remaining = design.get(design_index..).unwrap();
-            if design_remaining.is_empty() {
-                println!("complete {:?}", patterns);
-                ret += 1;
-                //towels.push(patterns);
-                continue;
-            }
-
-            //let key = (design_index, patterns.len());
-            //if hist.contains(&key) {
-            //    continue;
-           // }
-            //hist.insert(key);
-
-            //println!("design: {}|{}", design.get(..design_index).unwrap(), design_remaining);
+        let mut ans_sets: HashMap<&str, usize> = HashMap::new();
+        let max_len = design.len();
+        let mut i = max_len;
+        for i in (0..max_len).rev() {
+            let word = &design[i..];
+            let mut num = 0;
             let mut search = self.patterns.inc_search();
-            for (i,c) in (1..design_remaining.len()+1).zip(design_remaining.chars()) {
-                //println!("investigating {} {}", i, c);
+            for (c, j) in word.chars().zip(1..max_len) {
                 match search.query(&(c as u8)) {
                     None => { break; }
                     Some(Answer::Prefix) => { },
                     Some(Answer::Match) | Some(Answer::PrefixAndMatch) => {
-                        let p = design_remaining[..i].to_string();
-                        //println!("using pattern: {} for {}", p, design_remaining);
-                        let mut patterns2 = patterns.clone();
-                        patterns2.push(self.pattern_index.get(&p).unwrap());
-                        queue.push((design_index + i, patterns2));
+                        let remain = &word[j..];
+                        if remain.is_empty() {
+                            num += 1;
+                        } else {
+                            //println!("   looking at {}", remain);
+                            match ans_sets.get(&remain) {
+                                None => {}, // remain can't form a design
+                                Some(v) => {
+                                    num += v;
+                                }
+                            };
+                        }
                     }
                 };
             }
+            println!("   analyzed {} and found {} ways", word, num);
+            if num > 0 {
+                ans_sets.insert(word, num);
+            }
         }
-
-        //let len = towels.build().iter::<Vec<&Num>, _>().count();
+        let ret = match ans_sets.get(&design) {
+            Some(v) => *v,
+            None => 0,
+        };
         println!("design can be made {} ways", ret);
-        //ret += len;
         ret
     }
 
     fn possible_designs(&self) -> usize {
         let mut ret = 0;
         for design in self.designs.iter() {
-            let len = design.len()/2;
             ret += self._possible_design(design);
-            //ret += self._possible_design(&design[..len]) *
-             //      self._possible_design(&design[len..]);
         }
         ret
     }
